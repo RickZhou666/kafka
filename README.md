@@ -414,4 +414,25 @@ $ /usr/local/bin/zookeeper-server-start /usr/local/etc/zookeeper/zoo.cfg
 $ /usr/local/bin/kafka-server-start /usr/local/etc/kafka/server.properties
 
 ```
-    
+
+
+<br><br><br><br><br><br>
+
+# 3. Starting kafka without zookeeper
+
+1. Mac OX: One Kafka Broker - KRaft Mode(no ZK)
+```bash
+# 1. generate custer id
+$ kafka-storage.sh random-uuid
+>>kmKLdL7fTl6zvDrhy2NfMw
+
+# 2. format your storage directory
+$ kafka-storage.sh format -t kmKLdL7fTl6zvDrhy2NfMw -c /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
+# /tmp/kraft-combined-logs - where data stored
+>> Formatting /tmp/kraft-combined-logs with metadata.version 3.5-IV2.
+
+# 3. starting kafka server
+$ kafka-server-start.sh /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
+>>[2023-09-11 10:41:34,917] INFO [KafkaRaftServer nodeId=1] Kafka Server started (kafka.server.KafkaRaftServer)
+```
+
