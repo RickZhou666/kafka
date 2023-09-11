@@ -344,3 +344,74 @@ https://www.udemy.com/course/apache-kafka/learn/lecture/31409100?components=add_
 ## 1.10 Theory Roundup
 1. kafka concepts
     - ![imgs](./imgs/Xnip2023-09-10_23-07-24.jpg)
+    
+
+
+<br><br><br><br><br><br>
+
+# 2. Starting Kafka
+
+## 2.1 Starting Order
+1. Important: Starting Kafka
+    - for the rest of the course, we will start kafka...
+    - on the cloud with conduktor, with a secure connection
+    - locally: it will be accessible on 127.0.0.1(localhost)
+    - natively: we will use the native kafka binaries from the website
+    - with ONE Broker and (optionally) ONE zookeeper only (perfect for development)
+    - `Note`: the production-ready kafka cluster setup takes over 4 hours and is dedicated to another course in the apacha kafak series
+
+2. kafka installation
+    - https://www.conduktor.io/get-started/#via-docker
+    ```bash
+    $ curl -L https://releases.conduktor.io/quick-start -o docker-compose.yml && docker compose up -d --wait && echo "Conduktor started on http://localhost:8080"
+
+    $ curl -L https://releases.conduktor.io/console -o docker-compose.yml && docker compose up -d --wait && echo "Conduktor started on http://localhost:8080"
+    ```
+    - ![imgs](./imgs/Xnip2023-09-11_09-25-43.jpg)
+
+## 2.2 start kafka
+
+kafka tutorial: https://www.conduktor.io/kafka/how-to-install-apache-kafka-on-mac-with-homebrew/<br>
+
+1. start from binary tgz
+```bash
+https://rickeve.conduktor.app/admin/members?page=1&tab=members
+
+# 1. downlaod java11
+
+# 2. download kafka
+https://kafka.apache.org/downloads
+
+# 3. setup kafak path
+export PATH="$PATH:/Users/runzhou/git/kafka/kafka_2.13-3.5.1/bin"
+```
+
+2. mac os x
+```bash
+# 1. start zookeeper
+$ zookeeper-server-start.sh kafka_2.13-3.5.1/config/zookeeper.properties 
+
+# 2. start server
+$ kafka-server-start.sh kafka_2.13-3.5.1/config/server.properties
+
+```
+
+
+3. max os x: start kafka using brew
+```bash
+# 1. install brew
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2. install kafka using brew
+$ brew install kafka
+
+# 3. start zookeeper
+# bash location
+/usr/local/etc/kafka
+
+# 4. start kafka
+$ /usr/local/bin/zookeeper-server-start /usr/local/etc/zookeeper/zoo.cfg
+$ /usr/local/bin/kafka-server-start /usr/local/etc/kafka/server.properties
+
+```
+    

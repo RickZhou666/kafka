@@ -1,2 +1,5 @@
 *.zip
 .DS_Store
+*.tgz
+*.pkg
+kafka_2.13-3.5.1
