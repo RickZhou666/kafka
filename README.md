@@ -6,12 +6,29 @@ https://www.udemy.com/course/apache-kafka/learn/lecture/31409100?components=add_
 
 # Summary and Tips in front
 
-## common cmds
+## common tips
 ```bash
-# find port listening
+# I. Bash
+# 1. find port listening
 $ lsof -i -P -n | grep LISTEN
 
+
+# II. Java
+# 1. display java variable candidate
+command + P 
+
+# 2. try...catch
+
+# select below then => command + option + T
+Thread.sleep(500)
+
+# 3. optimize imports, remove unused imports
+control + option + O
+
+
 ```
+
+
 
 ## Thoughts
 1. why we need partition in kafka
@@ -817,3 +834,277 @@ $ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topi
 
 
 <br><br><br><br><br><br>
+
+# 5. Kafka Java Programming 101 
+
+1. Env Setup
+
+- SDK list
+    - for other languages, it's community supported
+    - sdk: https://www.conduktor.io/kafka/kafka-sdk-list/
+
+- Java 11
+    - https://docs.aws.amazon.com/corretto/latest/corretto-11-ug/what-is-corretto-11.html
+
+- Maven or Gradle
+    - https://maven.apache.org/download.cgi
+    - https://www.conduktor.io/kafka/creating-a-kafka-java-project-using-maven-pom-xml/
+    - https://www.conduktor.io/kafka/creating-a-kafka-java-project-using-gradle-build-gradle/
+
+
+```gradle
+plugins {
+    id("java")
+}
+
+group = "com.rick.demos"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+
+    // https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients
+    implementation 'org.apache.kafka:kafka-clients:3.1.0'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+```
+
+- Gradle setup
+- ![imgs](./imgs/Xnip2023-10-05_20-30-42.jpg)
+
+
+<br><br><br>
+
+## 5.1 Java Producer
+- learn how to write a basic producer to send data to Kafka
+- view basic configuration parameters
+- confirm we receive the data in the console consumer
+
+```bash
+# verify it's successful
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic demo_java --from-beginning
+```
+- successful
+- ![imgs](./imgs/Xnip2023-10-05_21-25-40.jpg)
+
+<br><br><br>
+
+## 5.2 Java Producer Callbacks
+- confirm the partition and offset the msg was sent to using callbacks
+- we'll look at the interesting behavior of StickyPartitioner
+- ![imgs](./imgs/Xnip2023-10-05_21-32-22.jpg)
+
+
+- in the for loop, it gives the same partition number, this is called `StickyPartitioner`
+    - when u send msg very quick, it will batch them together, and send to same partition 
+    - ![imgs](./imgs/Xnip2023-10-05_21-44-23.jpg)
+    - this key is null
+    - ![imgs](./imgs/Xnip2023-10-05_21-47-00.jpg)
+
+<br><br><br>
+
+## 5.3 Kafka Producer: Java API - with Keys
+1. end non-null keys to the Kafka topic
+2. Same key = same partition
+    - ![imgs](./imgs/Xnip2023-10-05_22-51-18.jpg)
+
+    - Same id goes to same partition
+    - ![imgs](./imgs/Xnip2023-10-06_09-11-19.jpg)
+
+<br><br><br>
+
+## 5.4 Java Consumer
+- learn how to write a basic consumer to receive data from Kafka
+- view basic configuration parameters
+- confirm we receive the data from the Kafka Producer written in Java
+    - ![imgs](./imgs/Xnip2023-10-06_09-13-25.jpg)
+
+
+- properties
+    - ![imgs](./imgs/Xnip2023-10-06_09-36-23.jpg)
+
+- keep consumer live, once producer send msg, consumer will receive it
+    - ![imgs](./imgs/Xnip2023-10-06_10-10-29.jpg)
+
+
+
+<br><br><br>
+
+## 5.5 Kafka consumer - graceful shutdown
+
+- ensure we have code in place to respond to termination signals
+- improve our java code
+- shutdown procedures
+    1. trigger terminal button
+    2. detect shutdown signal and throw wakeup exception
+    3. consumer.poll() detect wakeup exception and throw it
+    4. catch wakeup exception
+    5. in `finally` gracefully shutdown consumer
+    - ![imgs](./imgs/Xnip2023-10-06_10-41-31.jpg)
+
+<br><br><br>
+
+## 5.6 Kafka consumer inside java consumer group
+- make your consumer in java consume data as part of a consumer group
+- observe partition reblance machanisms
+    - ![imgs](./imgs/Xnip2023-10-06_10-49-40.jpg)
+
+
+- setup change in Run/Debug Configurations - allow multiple instancs
+    - ![imgs](./imgs/Xnip2023-10-06_10-56-41.jpg)
+
+- group1 is assigned partition2
+- group2 is assigned partition0,1
+- when you execute producer, it will consumer each msg accordingly
+    - ![imgs](./imgs/Xnip2023-10-06_10-58-52.jpg)
+    - ![imgs](./imgs/Xnip2023-10-06_10-59-30.jpg)
+
+
+- after we start 3rd instance, it's assigned to partition to each of them
+
+
+- if we shutdown one, it will be reblanced and allocate to rest of 2    
+    - ![imgs](./imgs/Xnip2023-10-06_11-03-30.jpg)
+    - ![imgs](./imgs/Xnip2023-10-06_11-04-02.jpg)
+
+<br><br><br>
+
+## 5.7 Java Consumer incremental cooperative rebalance & static group memebership
+
+### 5.7.1 Consumer Groups and Partition reblance
+- moving partitions between consumers is called a rebanlance
+- reassignment of partitions happen when a consumer leaves or joins a group
+- it also happens if an administrator adds new partitions into a topic
+    - ![imgs](./imgs/Xnip2023-10-06_11-25-59.jpg)
+
+<br><br><br>
+
+### 5.7.2 Eager Rebalance
+- all consumers stop, give up their membership of partitions
+- they rejoin the consumer group and get a new partition assignment
+- during a short period of time, the entire consumer group stops processings
+- consumers dont necessarily "get back" the same partitions as they used to
+    - ![imgs](./imgs/Xnip2023-10-06_11-27-44.jpg)
+
+<br><br><br>
+
+### 5.7.3 Cooperative Rebalnce (Incremental Rebalance)
+- Reassigning a small subset of the partitions from one consumer to another
+- other consumers that dont have reassigned partitions can still process uniterrupted
+- can go through several iterations to find a `stable` assignment (hence "incremental")
+- avoids `stop-the-world` events where all consumers stop processing data
+    - ![imgs](./imgs/Xnip2023-10-06_11-29-53.jpg)
+
+<br><br><br>
+
+### 5.7.4 Cooperative Rebalance, how to use?
+- `Kafka Consumer`: partition.assignment.strategy
+    - RangeAssignor: assign partitions on a per-topic basis(can lead to imbalance)
+    - RoundRobin: assign partitions across all topics in round-robin fashion, optimal balance
+    - StickyAssignor: balanced like RoundRobin, and then minimises partition movements when consumer join/ leave the group in order to minimize movements
+    - CooperativeStickyAssignor: rebalance strategy is identical to StickyAssignor, but supports cooperative rebalnces and therefore consumers can keep on consuming from the topic
+    - The default assignor is [RangeAssignor, CooperativeStickyAssignor]: which will use the RangeAssignor by default, but allows upgrading to the CooperativeStickyAssignor with just a single rolling bounce that removes the RangeAssignor from the list.
+
+- `Kafka Connect`: already implemented (enabled by default)
+- `Kafka Streams`: turned on by default using SteamsPartitionAssignor
+
+<br><br><br>
+
+### 5.7.5 static group membership
+
+- by default, when a consumer leavas a group, its partitions are revoked and re-assigned
+- if it joins back, it will have a new "member ID" and new partitions assigned
+- if you specify `group.instance.id` is makes the consumer a `static memeber`
+- upon leaving, the consumer has up to `session.timeout.ms` to join back and get back its partitions (else they will be re-assigned), without triggering a rebalance
+- this is helpful when consumers maintain local state and cache (to avoid re-building the cache)
+    - ![imgs](./imgs/Xnip2023-10-06_11-24-28.jpg)
+
+
+<br><br><br>
+
+## 5.8 Incremental cooperative rebalance - practice
+1. by default, it's `RangeAssignor` ang `CooperativeStickyAssignor`
+    - ![imgs](./imgs/Xnip2023-10-06_11-41-06.jpg)
+
+<br><br><br>
+
+2. CooperativeStickyAssignor demo
+    - 1. setup properties
+    ```java
+    properties.setProperty("partition.assignment.strategy", CooperativeStickyAssignor.class.getName());
+    ```
+
+    <br><br><br>
+
+    - 2. start one consumer instance
+        - default consume 3 partions
+        - ![imgs](./imgs/Xnip2023-10-06_11-48-50.jpg)
+
+    <br><br><br>
+
+    - 3. start second consumer instance
+        - revoke partition-2 from instance-1
+        - assign partition-2 to instance-2
+        - ![imgs](./imgs/Xnip2023-10-06_11-50-22.jpg)
+        - ![imgs](./imgs/Xnip2023-10-06_11-50-59.jpg)
+
+    <br><br><br>
+
+    - 4. start third consumer instance
+        - revoke partition-1 from instance-1
+        - assign partition-1 to instance-3
+        - ![imgs](./imgs/Xnip2023-10-06_11-52-49.jpg)
+        - ![imgs](./imgs/Xnip2023-10-06_11-52-13.jpg)
+
+    <br><br><br>
+
+    - 5. if we shutdown instance-2
+        - freed partition will be reassign to a instance, currently it's instance-3
+        - ![imgs](./imgs/Xnip2023-10-06_11-54-07.jpg)
+
+
+<br><br><br>
+
+3. strategy for static group membership
+    - ![imgs](./imgs/Xnip2023-10-06_11-47-10.jpg)
+
+
+
+## 5.9 Java consumer auto offset commit behavior
+- in the java consumer API, offsets are regularly commited
+- enable at-least once reading scenario by default (under conditions)
+- offsets are committed when you call `.poll()` and `auto.commit.interval.ms` has elapsed
+- example: `auto.commit.interval.ms=5000` and `enable.auto.commit=true` wil lcommit
+
+<br><br><br>
+
+- make sure msgs are all successfully processed before you call `poll()` again
+    - if u don't, u will not be in at-least-once reading scenario 
+    - in that (rare) case, you must disabe `enable.auto.commit`, and most likely most processing to a separate thread, and the from time-to-time call `.commitSync()` r `.commitAsync()` with the correct offsets manually (advanced)
+    - ![imgs](./imgs/Xnip2023-10-06_12-04-16.jpg)
+
+<br><br><br>
+
+- start a consumer
+    - default setting 
+    - ![imgs](./imgs/Xnip2023-10-06_12-06-16.jpg)
+    <br><br><br>
+    - we are processing the data after we call `poll()`
+    - ![imgs](./imgs/Xnip2023-10-06_12-06-57.jpg)
+
+<br><br><br>
+
+## 5.10 advanced tutorials
+https://www.conduktor.io/kafka/advanced-kafka-consumer-with-java/
