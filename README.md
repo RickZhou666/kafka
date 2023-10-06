@@ -3,6 +3,26 @@ This is the udemy course for kafka<br>
 https://www.udemy.com/course/apache-kafka/learn/lecture/31409100?components=add_to_cart%2Cavailable_coupons%2Cbase_purchase_section%2Cbuy_button%2Cbuy_for_team%2Ccacheable_buy_button%2Ccacheable_deal_badge%2Ccacheable_discount_expiration%2Ccacheable_price_text%2Ccacheable_purchase_text%2Ccurated_for_ufb_notice_context%2Ccurriculum_context%2Cdeal_badge%2Cdiscount_expiration%2Cgift_this_course%2Cincentives%2Cinstructor_links%2Clifetime_access_context%2Cmoney_back_guarantee%2Cprice_text%2Cpurchase_tabs_context%2Cpurchase%2Crecommendation%2Credeem_coupon%2Csidebar_container%2Cpurchase_body_container#overview<br>
 
 
+
+# Summary and Tips in front
+
+## common cmds
+```bash
+# find port listening
+$ lsof -i -P -n | grep LISTEN
+
+```
+
+## Thoughts
+1. why we need partition in kafka
+- How Partition count affects Kafka Performance. higher is your data throughput: Both the brokers and the producers can process different partitions completely independently – and thus in parallel. This allows these systems to better utilize the available resources and process more messages.
+
+<br><br><br>
+
+2. [Kubenetes autoscaling](https://www.densify.com/kubernetes-autoscaling/)
+
+
+
 <br><br><br><br><br><br>
 
 # 0. Setup
@@ -425,9 +445,10 @@ $ /usr/local/bin/kafka-server-start /usr/local/etc/kafka/server.properties
 # 1. generate custer id
 $ kafka-storage.sh random-uuid
 >>kmKLdL7fTl6zvDrhy2NfMw
+>>961ganiYT_uWit-RmNwZaQ
 
 # 2. format your storage directory
-$ kafka-storage.sh format -t kmKLdL7fTl6zvDrhy2NfMw -c /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
+$ kafka-storage.sh format -t 961ganiYT_uWit-RmNwZaQ -c /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
 # /tmp/kraft-combined-logs - where data stored
 >> Formatting /tmp/kraft-combined-logs with metadata.version 3.5-IV2.
 
@@ -436,3 +457,363 @@ $ kafka-server-start.sh /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/s
 >>[2023-09-11 10:41:34,917] INFO [KafkaRaftServer nodeId=1] Kafka Server started (kafka.server.KafkaRaftServer)
 ```
 
+- listen to port 9092
+![imgs](./imgs/Xnip2023-10-05_12-17-46.jpg)
+
+
+<br><br><br><br><br><br>
+
+
+# 4. CLI 101
+
+1. setup kafka path
+```bash
+# setup kafka path inside ~/zshrc
+export PATH="$PATH:/Users/runzhou/git/kafka/kafka_2.13-3.5.1/bin"
+```
+
+<br><br><br>
+
+## 4.1  Kafka Topics CLI
+1. Create Kafka Topics
+```bash
+# create first topic
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create
+```
+- ![imgs](./imgs/Xnip2023-10-05_12-18-32.jpg)
+
+- suspecious process created, probably the topic?
+- ![imgs](./imgs/Xnip2023-10-05_12-21-27.jpg)
+
+```bash
+
+# create topic with partitions
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic second_topic --create --partitions 3
+```
+- ![imgs](./imgs/Xnip2023-10-05_12-23-40.jpg)
+
+```bash
+
+# replicateion factor - replicate your topic in multiple servers, for disaster recovery purpose and high availability
+#                     - you cannot have more factor number than brokers
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3 --replication-factor 2
+
+# you can only create topic with replication factor of 1, as we only have 1 broker
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3 --replication-factor 1
+```
+- failed, as only 1 broker registered
+- ![imgs](./imgs/Xnip2023-10-05_12-26-25.jpg)
+- create with 1 succeeded
+- ![imgs](./imgs/Xnip2023-10-05_12-27-41.jpg)
+
+<br><br><br>
+
+2. List Kafka Topics
+```bash
+$ kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+- ![imgs](./imgs/Xnip2023-10-05_12-29-44.jpg)
+
+<br><br><br>
+
+3. Describe Kafka Topics
+```bash
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
+```
+- ![imgs](./imgs/Xnip2023-10-05_12-30-46.jpg)
+
+- partition count as 3, replace to each 3 brokers, ISR is in-sync replica
+- ![imgs](./imgs/Xnip2023-10-05_12-33-30.jpg)
+
+<br><br><br>
+
+4. Increase Partitions in a Kafka Topic
+
+<br><br><br>
+
+5. Delete a Kafka Topic
+
+```bash
+# delete first topic
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --delete
+```
+- ![imgs](./imgs/Xnip2023-10-05_12-35-07.jpg)
+
+
+
+<br><br><br>
+
+## 4.2  Kafka Console Producer CLI
+
+1. Produce without keys
+2. Produce with keys
+- ![imgs](./imgs/Xnip2023-10-05_15-39-46.jpg)
+
+
+```bash
+# (1) create first_topic
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create --partitions 1
+
+# (2) produce to this first_topic
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic 
+>hello
+>this is rick
+>i'm practing Kafka
+>^C%
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-17-16.jpg)
+
+
+
+```bash
+# (3) produce with properties
+# acks=all - all the msg should be acked by all brokers
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --producer-property acks=all
+>some msgs that is acked
+>just for practicing
+>carry on
+>^C%
+
+# (4) produce to non-exist topic
+#       1st time product to a non-exist topic failed
+#       but it will create this topic after, that it's successful
+#       you can verify that but --list cmd
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --topic new_topic
+>hello there!
+[2023-10-05 15:23:16,722] WARN [Producer clientId=console-producer] Error while fetching metadata with correlation id 4 : {new_topic=UNKNOWN_TOPIC_OR_PARTITION} (org.apache.kafka.clients.NetworkClient)
+>hello
+>^C
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-23-33.jpg)
+- ![imgs](./imgs/Xnip2023-10-05_15-25-28.jpg)
+
+
+```bash
+# create new_topic with default setting
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-28-54.jpg)
+
+- you can go to server.properties to change the default partition number
+- ![imgs](./imgs/Xnip2023-10-05_15-30-30.jpg)
+
+```bash
+# (5) produce topic with keys
+#       the separator is :
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --property parse.key=true --property key.separator=:
+>example key:example value
+>name:Stephane
+
+# if send in non-key mode, error will be thrown
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-38-55.jpg)
+
+
+<br><br><br>
+
+## 4.3  Kafka Console Consumer CLI
+1. Consume from tail of the topic
+2. Consume from beginning of the topic
+3. Show both key and values in the output
+
+- ![imgs](./imgs/Xnip2023-10-05_15-40-49.jpg)
+
+```bash
+# (1) create a topic with 3 partitions
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic second_topic --create --partitions 3
+
+# (2) start consume, but nothing happened
+#   as we consume from right now, not before
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-45-44.jpg)
+
+
+```bash
+# (3) start two terminal, consume on top, produce on bottom
+# consumer
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic
+
+# producer
+#   setup a property as RoundRobinPartitioner, as we want to produce one partition at a time
+#   but this is the most inefficient way to produce in production
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --producer-property partitioner.class=org.apache.kafka.clients.producer.RoundRobinPartitioner --topic second_topic
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-51-10.jpg)
+
+
+```bash
+# (4) consume from beginning
+#   the result is not in order as we split into 3 partitions
+#   so it's read from each partition
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --from-beginning
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_15-55-09.jpg)
+
+
+
+```bash
+# (5) display the partition number as we consume
+#       --property print.timestamp=true     => to get know when msg got received
+#       --property print.key=true           => 
+#       --property print.value=true         => 
+#       --property print.partition=true     => get partition number where the msg assigned to
+#       --from-beginning                    => consume from beginning
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --formatter kafka.tools.DefaultMessageFormatter --property print.timestamp=true --property print.key=true --property print.value=true --property print.partition=true --from-beginning
+
+# partition 1 is the leader partion
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic second_topic --describe
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-01-52.jpg)
+
+
+<br><br><br>
+
+## 4.4 Kafka Consumer in Group
+- learn about `--group` parameter
+- see how partitions read are divided amongst multiple CLI consumers
+- ![imgs](./imgs/Xnip2023-10-05_16-35-16.jpg)
+
+
+
+```bash
+# (1) create a new topic
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create --partitions 3
+
+# (2) start 1 consumer and start 1 producer
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+$ kafka-console-producer.sh --bootstrap-server localhost:9092 --producer-property partitioner.class=org.apache.kafka.clients.producer.RoundRobinPartitioner --topic third_topic
+
+# (3) start antoher consumer with same command
+#       two consumers in same group
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+
+# (4) add a third consumer
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-25-13.jpg)
+
+
+
+
+```bash
+# (5) if you 4th consumer, one of them wont consumer any msg, as we only have 3 partitions
+
+
+# (6) if we stop all consumer, and keep producer, once we start it, it will catch up all new msg
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-33-26.jpg)
+
+
+
+
+```bash
+
+# (7) if we start with a differnt group, it will read all
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-second-application --from-beginning
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-27-31.jpg)
+
+```bash
+# (8) but if we start again, it will display nothing, as it wont process msg has been processed
+#       --from-beginning is an arguemnt that will only be helpful when there has never been a consumer offset that has been committed as part of group
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-28-06.jpg)
+
+
+```bash
+# a new group will read all msg
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-31-59.jpg)
+
+<br><br><br>
+
+## 4.5  Kafka Consumer Groups CLI
+
+- ![imgs](./imgs/Xnip2023-10-05_16-57-43.jpg)
+
+```bash
+#  (1) list all consumer groups
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+
+
+# (2) describe the consumer group detail
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-second-application
+
+# (3) when we start a producer and produce more msg, the lag increased
+```
+
+- ![imgs](./imgs/Xnip2023-10-05_16-45-17.jpg)
+
+```bash
+# (4) start group 2 consumer
+#       the lag turn into 0, and assgin consumer_id and host to consumer
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-second-application --from-beginning
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-49-19.jpg)
+
+
+```bash
+# (5) start another consumer with same group 2
+#       msg partition spread out to different group
+#           partition 2     => group 2 new created
+#           partition 0, 1  => group 2 initial created
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-second-application --from-beginning
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-51-58.jpg)
+
+
+
+```bash
+# (6) start a consumer but dont specify a group id
+#       this will read all msg
+#       this will also create temporary group id e.g. console-consumer-34075
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --from-beginning
+
+```
+- ![imgs](./imgs/Xnip2023-10-05_16-56-28.jpg)
+
+
+<br><br><br>
+
+## 4.6  Resetting Offsets
+1. Start/ Stop console consumer
+2. Reset offsets
+3. Start console consumer and see the outcome
+- ![imgs](./imgs/Xnip2023-10-05_17-00-34.jpg)
+
+```bash
+# (1) describe the consume group to see the offsets
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+
+# (2) dry-run to check after reset what offsets looks like
+#      dry-run doesnt actually reset the offsets
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group my-first-application --reset-offsets --to-earliest --topic third_topic --dry-run
+```
+- ![imgs](./imgs/Xnip2023-10-05_17-04-48.jpg)
+
+
+```bash
+# (3) execute to reset offsets
+#   offset reset, now it will all from beginning
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group my-first-application --reset-offsets --to-earliest --topic third_topic --execute
+
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-first-application
+```
+- ![imgs](./imgs/Xnip2023-10-05_17-06-58.jpg)
+
+
+```bash
+# (4) start a consumer and see the result
+#       now the lag is 0
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic third_topic --group my-first-application
+```
+- ![imgs](./imgs/Xnip2023-10-05_17-09-54.jpg)
+
+
+<br><br><br><br><br><br>

@@ -56,7 +56,7 @@ kafka-topics.sh --bootstrap-server localhost:9092 --topic third_topic --create -
 kafka-topics.sh --bootstrap-server localhost:9092 --list 
 
 # Describe a topic
-kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
+    kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
 
 # Delete a topic 
 kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --delete
