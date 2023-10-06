@@ -1108,3 +1108,48 @@ $ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic demo_java 
 
 ## 5.10 advanced tutorials
 https://www.conduktor.io/kafka/advanced-kafka-consumer-with-java/
+
+<br><br><br>
+
+### 5.10.1 Java Consumer Rebalance Listener
+-  in case you're doing a manual commit of your offsets to Kafka or externally, this allows you to commit offsets when partitions are revoked from your consumer.
+
+1. Consumer rebalances happen for the following events:
+    - Number of partitions change for any of the subscribed topics
+    - A subscribed topic is created or deleted
+    - An existing member of the consumer group is shutdown or fails
+    - A new member is added to the consumer group
+
+<br><br><br>
+
+#### 5.10.1.1 when should u use a consumer rebalance?
+    - One common use is saving offsets in a custom store. By saving offsets in the onPartitionsRevoked(Collection) call we can ensure that any time partition assignment changes the offset gets saved.
+
+
+<br><br><br>
+
+#### 5.10.1.2 Consumer Rebalance Listeners Example
+1. Consumer Rebalance Listener implementation
+- we have created a ConsumerRebalanceListener that keeps track of how far we have been consuming in our Kafka topic partitions.
+    - we track internally in the class the offsets of how far we have consumers using currentOffsets
+    - in the function addOffsetToTrack we make sure to increment the offset by 1 in order to commit the position properly
+    - we use a synchronous consumer.commitSync call in onPartitionsRevoked to block until the offsets are successfully committed
+
+<br><br><br>
+
+2. Use rebalance listenr in consumer code
+    - We disable auto commit (otherwise we wouldn't need a rebalance listener)
+    - on every message being successfully synchronously processed, we call listener.addOffsetToTrack(record.topic(), record.partition(), record.offset()); which allows us to track how far we've been processing in our consumer
+    - when we're done with a batch we call consumer.commitAsync(); to commit offsets without blocking our consumer loop.
+    - on the consumer shutdown, we finally call again consumer.commitSync(listener.getCurrentOffsets()); to commit one last time based on how far we've read before closing the consumer.
+
+<br><br><br>
+
+### 5.10.2 Java Consumer Seek and Assign
+- If instead of using consumer groups, you want to start at specific offsets and consume only specific partitions, you will learn about the .seek() and .assign() APIs.
+    - ![imgs](./imgs/Xnip2023-10-06_15-56-09.jpg)
+
+<br><br><br>
+
+### 5.10.3 Java Consumer in Threads
+- Run consumer .poll() loop in a separate thread.
