@@ -1148,8 +1148,420 @@ https://www.conduktor.io/kafka/advanced-kafka-consumer-with-java/
 ### 5.10.2 Java Consumer Seek and Assign
 - If instead of using consumer groups, you want to start at specific offsets and consume only specific partitions, you will learn about the .seek() and .assign() APIs.
     - ![imgs](./imgs/Xnip2023-10-06_15-56-09.jpg)
+    
 
 <br><br><br>
 
 ### 5.10.3 Java Consumer in Threads
 - Run consumer .poll() loop in a separate thread.
+
+
+<br><br><br><br><br><br>
+
+# 6. Kafka wikimedia producer & advanced producer configurations
+
+<br><br><br>
+
+## 6.1 Kafka wikimedia producer setup and run
+
+- https://stream.wikimedia.org/v2/stream/recentchange
+- https://codepen.io/Krinkle/pen/BwEKgW?editors=1010
+- https://esjewett.github.io/wm-eventsource-demo/
+
+```bash
+# 1. start kafka server locally
+# 1.1 generate custer id
+$ kafka-storage.sh random-uuid
+>>961ganiYT_uWit-RmNwZaQ
+
+# 1.2 format your storage directory
+$ kafka-storage.sh format -t 961ganiYT_uWit-RmNwZaQ -c /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
+# /tmp/kraft-combined-logs - where data stored
+>> Formatting /tmp/kraft-combined-logs with metadata.version 3.5-IV2.
+
+# 1.3 starting kafka server
+$ kafka-server-start.sh /Users/runzhou/git/kafka/kafka_2.13-3.5.1/config/kraft/server.properties
+>>[2023-09-11 10:41:34,917] INFO [KafkaRaftServer nodeId=1] Kafka Server started (kafka.server.KafkaRaftServer)
+
+# 2. create topic
+# 2.1 create
+$ kafka-topics.sh --bootstrap-server localhost:9092 --topic wikimedia.recentchange --create --partitions 3 --replication-factor 1
+
+# 2.2 check topics
+$ kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+# 3. read from topic
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic wikimedia.recentchange
+
+
+```
+-  `it's streaming data`
+    - ![imgs](./imgs/Xnip2023-10-06_17-45-02.jpg)
+
+<br><br><br>
+
+## 6.2 Producer Acknowledgements deep dive
+- Producers can choose to receive acknowledgements of data writes:
+    - acks=0: Producer won't wait for acknowledgement (possible data loss)
+    - acks=1: Producer will wait for leader acknowledgement (limited data loss)
+    - acks=all: Leader + replicas acknowledgement (no data loss)
+    - ![imgs](./imgs/Xnip2023-10-06_18-16-57.jpg)
+
+<br><br><br>
+
+## 6.2.1 Producer: acks = 0
+- when acks=0 producers consider msgs as "written successfully" the most the msg was ent without waiting for the broker to accept it at all
+    - if broker goes offline or an exception happens, we won't know and `will lose data`
+    - useful for data where it's okay to potentially lose msgs, such as metrics collection
+    - produces the highest throughput setting becasuse the network overhead is minimized
+    - ![imgs](./imgs/Xnip2023-10-06_18-17-59.jpg)
+
+<br><br><br>
+
+## 6.2.2 Producer: acks = 1
+
+- when acks=1, producers consider msg as "written successfully" when the msg was ackknowledged by only the leader
+- deafult for Kafka v1.0 to v2.8
+- leader response is requested, but replication is not gurantee as it happens in the background
+- if the leader broker goes offline unexpectedly but replicas haven't replicated the data yet, we have a data loss
+- if an ack is not received, the producer may retry the request
+    - ![imgs](./imgs/Xnip2023-10-06_18-21-42.jpg)
+
+<br><br><br>
+
+## 6.2.3 Producer: acks = all (acks=-1)
+- when acks=all, producers consider msgs as "written successfully" when the msg is accpected by all in-sync replicas (ISR)
+- default for kafka 3.0+
+    - ![imgs](./imgs/Xnip2023-10-06_18-23-43.jpg)
+
+<br><br><br>
+
+## 6.2.4 Producer: acks=all & min.insync.replicas
+- the leader replica for a partition checks to see if there are enough in-sync replicas for safely writing the msg (controlled by the broker setting min.insync.replicas)
+    - min.insync.replicas=1: only the broker leader needs to successfully ack
+    - min.insync.replicas=2: at least the broker leader and one replica need to ack 
+    - ![imgs](./imgs/Xnip2023-10-06_18-24-38.jpg)
+    
+
+<br><br><br>
+
+## 6.2.5 Kafka Topic Availablity 
+- Availability: (considering RF = 3)
+    - acks=0&acks=1: if one paratition is up and considered an ISR, the topic will be available for writes
+    - acks=all:
+        - min.insync.replicas=1 (default): the topic must have at least 1 partition up as an ISR (that includes the leader) and so we can tolerate two brokers being down
+        - min.insync.replicas=2: the topic must have at least 2 ISR up, and therefore we can tolerate at most one broker being down(in the case of replication factor of 3), and we have the guarantee that for every write, the data will be at least written twice
+        - min.insync.replicas=3: this wouldn't make much sense for a corresponding replication factors of 3 and we couldn't tolerate any broker going down
+        - in summary, when `acks=all` with a `replication.factor=N` and `min.insync.replicas=M` we can tolerate N-M brokers going down for topic availability purposes
+- acks=all and min.insync.replicas=2 is the most popular option for data durabilit and availability and allows you to withstand as most the `loss` of one kafka broker
+
+
+<br><br><br>
+
+## 6.3 Producer Retries
+
+<br><br><br>
+
+### 6.3.1 Producer retries
+- in case of transient failures, developers are expected to handle exceptions, otherwise the data will be lost
+- Example of transient failure
+    - NOT_ENOUGH_REPLICAS (due to min.insync.replicas setting)
+
+- There is a "retries" setting
+    - default to 0 for kafa <= 2.0
+    - defaults to 2147483647 for kafka >= 2.1
+
+- ther retry.backoff.ms setting is by defaul 100ms
+
+<br><br><br>
+
+### 6.3.2 Producer timeouts
+- if retries > 0, for example retries=2147483647, retries are bounded by a timeout
+- since kafka 2.1, you can set: delivery.timeout.ms=12000==2min
+- records will be failed if they can't be acknowledges within delivery.timout.ms
+    - ![imgs](./imgs/Xnip2023-10-06_18-40-10.jpg)
+
+<br><br><br>
+
+### 6.3.3 Producer retries: warning for old version of Kafka
+- if you are not using an idempotent producer (not recommended-old kafka):
+    - in case of retries, there is a chance that msgs will be sent out of order (if a batch has failed to be sent)
+    - `if u rely on key-based ordering, that can be an issue`
+
+- for this, you can set the setting while controls how many produce requests can be made in parallel: max.in.flight.requests.per.connection
+    - default: 5
+    - set it to 1 if you need to ensure ordering (may impact throughput)
+
+- in kafka >= 1.0.0, there's better solution with idempotent producers!
+
+
+<br><br><br>
+
+## 6.4 Idempotent Producer
+
+- The Producer can introduce duplicate msgs in Kafka due to network errors  
+    - ![imgs](./imgs/Xnip2023-10-06_22-11-31.jpg)
+
+
+
+- In Kafka >= 0.11, you can define a "idempotent producer" which won't introduce duplicates on network error
+    - ![imgs](./imgs/Xnip2023-10-06_22-09-22.jpg)
+    
+
+
+- Idenpotent producers are great to guarantee a stable a stable and safe pipeline
+- **They are the deafult since Kafka 3.0, recommended to use them**
+
+- They come with
+    - retries = Integer.MAX_VALUE(2^31-1=2147483647)
+    - max.in.flight.requests=1(Kafka==0.11) or
+    - max.in.flight.requests=5(Kafka>=1.0-higher performance & keep ordering - KAFKA-5494)
+    - acks=all
+
+- These settings are applied automatically after your producer has started if not manually set
+- Just set:
+    - `producerProps.put("enable.idempotence", true);`
+
+
+<br><br><br>
+
+## 6.5 Safe Kafka Producer - Summary & Demo
+
+1. Kafka Producer defaults
+- since kafka 3.0, the producer is "safe" by default
+    - acks=all (-1)
+    - enable.idempotent=true
+- with kafka 2.8 and lower, the producer by default comes with:
+    - acks=1
+    - enable.idempotent=false
+- I would recommend using a safe producer whenever possible!
+- Super important: always use upgraded kafka clients
+
+2. Safe kafka producer - summary
+- Since kafka 3.0, the producer is "safe" by default, otherwise, upgrade your clients or set the following settings
+
+- acks=all(-1)
+    - ensures data is properly replicated before an ack is received
+- min.insync.replicas=2(broker/topic level)
+    - ensures two brokers in ISR at least have the data after an ack
+- enable.idempotence=true
+    - Duplicates are not introduced due to network retries
+- retries=MAX_INI(producer level)
+    - Retry until `delivery.timeout.ms` is reached
+- delivery.timeout.ms=120000
+    - fail after retrying for 2 minutes
+- max.in.flight.requests.per.connection=5
+    - Ensure maximum performance while keeping msg ordering
+
+- Kafka > 2.8
+    - ![imgs](./imgs/Xnip2023-10-06_22-24-40.jpg)
+
+- Kafka <= 2.8
+    - ![imgs](./imgs/Xnip2023-10-06_22-26-31.jpg)
+
+<br><br><br>
+
+## 6.6 Msg compression at the Producer
+
+<br><br><br>
+
+### 6.6.1 Msg compression at the Producer level
+- Producer usually send data that is text-based, for example with JSON data
+- In this case, it is importatnt to apply compression to the producer.
+
+- compression can be enabled at the Producer level and dose't require any configuration change in the Brokers or in the Consumers
+
+- `compression.type` can be `none` (default), gzip, lz4, snappy, zstd (Kafka 2.1)
+- Compression is more effective the bigger the batch of msg being sent to Kafka
+- Benchmark here: https://blog.cloudflare.com/squeezing-the-firehose/
+    - ![imgs](./imgs/Xnip2023-10-06_22-45-28.jpg)
+    
+
+<br><br><br>
+
+### 6.6.2 msg compression
+- the compressed batch has the following advantage:
+    - much smaller producer request size (compression ratio up to 4x!)
+    - faster to transfer data over the network >= less latency
+    - better throughput
+    - better disk utilisation in Kafka (stored msgs on disk are smaller)
+
+- Disadvantages (very minor):
+    - producers must commit some CPU cycles to compression
+    - consumers must commit some CPU cycles to decompression
+- Overall:
+    - Consider testing `snappy` or `lz4` for optimal speed/ compression ratio (test others too)
+    - consider tweaking `linger.ms` and `batch.size` to have bigger batches, and therefore more compression and higher throughput
+    - use compression in production
+
+<br><br><br>
+
+### 6.6.3 Msg compression at the Broker/ Topic level  
+- there is also setting you can set at the broker level(all topics) or topic-level
+- `compression.type=producer` (default), the broker takes the compressed batch from the producer client and writes it directly to the topic's log file without recompressing the data
+- `compression.type=none` all batches are decompressed by the broker
+- `compression.type-lz4`: (for example)
+    - if it's matching the producer settings, data is stored on disk as is
+    - if it's different compression setting, batches are decompressed by the broker and then re-compressed using the compression algorithm specified
+
+- **warning: if you enable broker-side compression, it will consume extra CPU cycles**
+
+
+<br><br><br>
+
+## 6.7 linger.ms & batch.size
+
+<br><br><br>
+
+### 6.7.1 linger.ms & batch.size
+- by default, kafka producers try to send records as soon as possible
+    - it will have up to `max.in.flight.requests.per.connection=5`, meaning up to 5 msg batches being in flight (being sent between the producer in the broker ) at most
+    - after this, if more msgs must be sent while others are in flight, kafka is smart and will start batching them before the next batch send
+- this smart batching helps increase throughput while maintaining very low latency
+    - added benefit: batches have higher compression ratio so better efficiency
+
+- two settings to influence the batching mechanism
+    - `linger.ms`: (default 0) how long to wait until we send a batch. Adding a small number of example 5ms helps add more msgs in the batch at the expense of latency
+    - `batch.size`: if a batch is filled before the linger.ms, increas the batch size
+- ![imgs](./imgs/Xnip2023-10-06_23-01-39.jpg)
+
+<br><br><br>
+
+### 6.7.2 batch.size (default 16KB)
+- maximum number of bytes that will be included in a batch
+- incresing a batch size to sth like 32KB or 64KB can help increasing the compression, throughput, and efficiency of requests
+- any msgs that is bigger than the batch size will not be batched
+- a batch is allocated per partition, so make sure that your dont set it to a number that's too high, otherwise you'll run watse memory!
+- (note: you can monitor the average batch size metric using kafka producer metrics)
+
+<br><br><br>
+
+### 6.7.3 High Throughput producer
+- increase linger.ms and producer will wait a few milliseconds for the batches to fill up before sending them
+- if your are sending full batches and have memory to spare, you can increase batch.size and send larger batches
+- introduce some producer-level compression for more efficiency in sends
+```java
+properties.setProperty(PropertiesKeys.COMPRESSION_TYPE_CONFIG, "snappy");
+properties.setProperty(PropertiesKeys.LINGER_MS_CONFIG, "20");
+properties.setProperty(PropertiesKeys.BATCH_SIZE_CONFIG, Integer.toString(32*1024));
+```
+
+<br><br><br>
+
+## 6.8 HIGH throughput implementation
+1. setup
+    - `snappy` as msg compression in our producer
+    - `snappy` is very helpful if ur msg are text based, e.g. log lines or JSON documents
+    - `snappy` has a good balance of CPU/ compression ratio
+    - we'll also increase the `batch.size` to 32KB and introduce a small delay through `linger.ms`(20ms)
+    - we'll check which partitioner is being used
+    ```java
+    // high throughput producer (at the expense of a bit latency and CPU usage)
+    properties.setProperty(PropertiesKeys.COMPRESSION_TYPE_CONFIG, "snappy");
+    properties.setProperty(PropertiesKeys.LINGER_MS_CONFIG, "20");
+    properties.setProperty(PropertiesKeys.BATCH_SIZE_CONFIG, Integer.toString(32*1024));
+    ```
+
+
+```bash
+# start a consumer as well
+$ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic wikimedia.recentchange
+```
+
+- changes take effect
+    - ![imgs](./imgs/Xnip2023-10-06_23-42-07.jpg)
+
+- consumer data didn't get compressed
+    - ![imgs](./imgs/Xnip2023-10-06_23-41-08.jpg)
+
+<br><br><br>
+
+## 6.9 Producer default partitioner & sticky partitioner
+
+<br><br><br>
+
+### 6.9.1 Producer default partitioner when key != null
+- `key hashing` is the process of determining the mapping of a key to a partition   
+- in the default kafka paritioner, the keys are hashed using the `murmur2 algorithm`
+    - `targetPartition = Math.abs(Utils.murmur2(keyBytes)) % (numPartitions - 1)`
+- this means that same key will go to the same partition, and adding partitions to a topic will completely alter the formula
+- it is most likely preferred to not override the behavior of the partitioner, but it is possible to do so using `partitioner.class`
+    - ![imgs](./imgs/Xnip2023-10-06_23-47-50.jpg)
+
+
+<br><br><br>
+
+### 6.9.2 Producer default partitioner when key == null
+- when key=null, the producer has `default partitioner` that varies:
+    - RoundRobin: for kafka 2.3 and below
+    - Sticky Partitioner: for kafka 2.4 and above
+
+- Stricky Partitioner improves the performance of the producer especially when high throughput when the key is null
+    - ![imgs](./imgs/Xnip2023-10-06_23-49-44.jpg)
+
+<br><br><br>
+
+### 6.9.3 Producer default partitioner kafka <= 2.3 Round Robin Partitioner
+- with kafka <= 2.3, when there's no partition and no key specified, the default partitioner sends data in a `round-robin` fashion
+- this results in more batches (one batch per partition) and smaller batches (imagine with 100 partitions)
+- smaller batches lead to more requests as well as higher latency
+    - ![imgs](./imgs/Xnip2023-10-06_23-56-24.jpg)
+
+<br><br><br>
+
+### 6.9.4 Producer default partitioner kafka >= 2.4 Sticky partitioner
+- it would be better to have all the records sent to a single partition and not multiple parttions to improve batching
+- the producer `sticky partitioner`:
+    - we "stick" to a partition until the batch is full or linger.ms has elapsed
+    - after sending the batch, the partition that is sticky changes
+- larger batches and reduced latency (because larger requests, and batch.size more likeyl to be reached)
+- over time, records are still spread evenly across partitions
+    - ![imgs](./imgs/Xnip2023-10-06_23-54-50.jpg)
+
+<br><br><br>
+
+### 6.9.5 Sticky partitioner - performance improvement
+
+- latency is noticeably lower. [source](https://cwiki.apache.org/confluence/display/KAFKA/KIP-480%3A+Sticky+Partitioner)
+- ![imgs](./imgs/Xnip2023-10-06_23-58-41.jpg)
+
+
+
+
+<br><br><br>
+
+## 6.10 [advanced] max.block.ms and buffer.memory
+
+- if the producer produces faster than broker can take, the records will be buffered in memory
+
+- buffer.memory=33554432(32MB) the size of the send buffer
+
+- that buffer will fill up over time and empty back down when the throughput to the broker increases
+
+- if that buffer is full(all 32MB), then the .send() method will start to block (won't return right away)
+
+- max.block.ms=60000: the time the .send() will blcok until throwing an exception. Exceptions are thrown when:
+    - producer has filled up its buffer
+    - the broker is not accepting any new data
+    - 60 seconds has elapsed
+
+- if you hit an exception hit that usually eans your brokers are down or overloaded as they can't repond to requests
+
+
+
+
+- if the buffer.memory is full, the producer will be blocked and block your program
+    - ![imgs](./imgs/Xnip2023-10-07_00-14-50.jpg)
+
+- default setting
+    - ![imgs](./imgs/Xnip2023-10-07_00-15-22.jpg)
+
+<br><br><br>
+
+## 6.11 quiz
+
+1. only consumers de-compress the messages!
+
+
+<br><br><br><br><br><br>
+
