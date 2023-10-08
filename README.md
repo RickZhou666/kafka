@@ -38,6 +38,13 @@ control + option + O
 
 2. [Kubenetes autoscaling](https://www.densify.com/kubernetes-autoscaling/)
 
+3. OpenSearch, opensource version of elasticsearch
+
+4. different between URI and URL
+    - URL is the subset of URI.
+    - URI identifies a resource and differentiates it from others by using a name, location, or both. 
+    - URL identifies the web address or location of a unique resource. 
+    - URI contains components like a scheme, authority, path, and query.
 
 
 <br><br><br><br><br><br>
@@ -1565,3 +1572,436 @@ $ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic wikimedia.
 
 <br><br><br><br><br><br>
 
+
+# 7. Opensearch Consumer & Advanced Consumer Configurations
+
+- Setup an opensearch (open-source fork of elasticsearch) cluster:
+    - Free tier/ managed OpenSearch available at bonsai.io
+    - Run locally using docker for example
+- Use java libraries
+    - openSearch REST High Level Client
+- ![imgs](./imgs/Xnip2023-10-07_11-03-59.jpg)
+
+
+
+<br><br><br>
+
+## 7.1 Opensearch setup
+
+- opensearch            - the database, http://localhost:9200/
+- opensearch-dashboards - the console, http://localhost:5601/app/dev_tools#/console
+
+```yml
+version: '3.7'
+services:
+  opensearch:
+    image: opensearchproject/opensearch:1.2.4
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true" # disable https and logins
+      compatibility.override_main_response_version: "true"
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+
+  # console at http://localhost:5601/app/dev_ tools#/console
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:1.2.0
+    ports:
+      - 5601:5601
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+```
+
+
+
+<br><br><br>
+
+## 7.2 Opensearch basic
+
+
+- go to opensearch dashboard, http://localhost:5601/app/dev_tools#/console
+
+```bash
+# make sure it's working
+GET /
+
+# add new index
+PUT /my-first-index
+
+# add some data
+PUT /my-first-index/_doc/1
+{"Description": "To be or not to be, that is the question."}
+
+# retrieve the data
+GET /my-first-index/_doc/1
+
+# delete the data
+DELETE /my-first-index/_doc/1
+
+
+# delete the index
+DELETE /my-first-index
+
+# count an index
+GET /wikimedia/_count
+
+# get a document via id
+GET /wikimedia/_doc/npKKC4sB3Np89Q2M6ta1
+```
+
+<br><br><br>
+
+## 7.3 OpenSearch consumer implementation
+
+1. create open search client
+2. create index named as `wikimedia`
+
+3. create consumer
+
+- you didn't subscribe any topic
+```log
+Exception in thread "main" java.lang.IllegalStateException: Consumer is not subscribed to any topics or assigned any partitions
+	at org.apache.kafka.clients.consumer.KafkaConsumer.poll(KafkaConsumer.java:1232)
+	at org.apache.kafka.clients.consumer.KafkaConsumer.poll(KafkaConsumer.java:1220)
+	at OpenSearchConsumer.main(OpenSearchConsumer.java:107)
+
+```
+
+4. some data is empty need to try and catch that exception
+```log
+Exception in thread "main" OpenSearchStatusException[OpenSearch exception [type=mapper_parsing_exception, reason=object mapping for [log_params] tried to parse field [null] as object, but found a concrete value]]
+	at org.opensearch.rest.BytesRestResponse.errorFromXContent(BytesRestResponse.java:202)
+	at org.opensearch.client.RestHighLevelClient.parseEntity(RestHighLevelClient.java:2075)
+	at org.opensearch.client.RestHighLevelClient.parseResponseException(RestHighLevelClient.java:2052)
+	at org.opensearch.client.RestHighLevelClient.internalPerformRequest(RestHighLevelClient.java:1775)
+	at org.opensearch.client.RestHighLevelClient.performRequest(RestHighLevelClient.java:1728)
+	at org.opensearch.client.RestHighLevelClient.performRequestAndParseEntity(RestHighLevelClient.java:1696)
+	at org.opensearch.client.RestHighLevelClient.index(RestHighLevelClient.java:961)
+	at OpenSearchConsumer.main(OpenSearchConsumer.java:123)
+	Suppressed: org.opensearch.client.ResponseException: method [POST], host [http://localhost:9200], URI [/wikimedia/_doc?timeout=1m], status line [HTTP/1.1 400 Bad Request]
+{"error":{"root_cause":[{"type":"mapper_parsing_exception","reason":"object mapping for [log_params] tried to parse field [null] as object, but found a concrete value"}],"type":"mapper_parsing_exception","reason":"object mapping for [log_params] tried to parse field [null] as object, but found a concrete value"},"status":400}
+		at org.opensearch.client.RestClient.convertResponse(RestClient.java:344)
+		at org.opensearch.client.RestClient.performRequest(RestClient.java:314)
+		at org.opensearch.client.RestClient.performRequest(RestClient.java:289)
+		at org.opensearch.client.RestHighLevelClient.internalPerformRequest(RestHighLevelClient.java:1762)
+		... 4 more
+```
+
+5. `operation`
+```bash
+
+# (1) use WikimediaChangesProducer to produce data to Kafka with topic wikimedia
+
+# (2) use OpenSearchConsumer to consumer data from Kafka and topic is wikimedia
+
+# (3) below to check consumer group lag
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group consumer-opensearch-demo
+
+```
+- ![imgs](./imgs/Xnip2023-10-07_12-19-15.jpg)
+- ![imgs](./imgs/Xnip2023-10-07_12-19-25.jpg)
+- ![imgs](./imgs/Xnip2023-10-07_12-18-32.jpg)
+
+
+
+<br><br><br>
+
+## 7.4 Consumer delivery semantics
+
+<br><br><br>
+
+### 7.4.1 Delivery semantics for consumers - At most once
+- offsets are committed as soon as the msg is received. if the processing goes wrong, the msg will be lost(it wont be reaad again)
+    - ![imgs](./imgs/Xnip2023-10-07_12-33-41.jpg)
+
+<br><br><br>
+
+### 7.4.2 Delivery semantics  - At least once
+- `At least once`: offsets are commited after the msg is processed. if the processing goes wrong, the msg will be read again. this can result in duplicate processing of msg. make sure your processing is `idempotent` (i.e. processing again the msg won't impact your systems)
+    - ![imgs](./imgs/Xnip2023-10-07_12-33-22.jpg)
+    
+
+<br><br><br>
+
+### 7.4.3 Delivery semantics for consumers - summary
+
+- `At most once`: offsets are committed as soon as the msg is received. if the processing goes wrong, the msg will be lost(it wont be reaad again)
+- `At least once(preferred)`: offsets are commited after the msg is processed. if the processing goes wrong, the msg will be read again. this can result in duplicate processing of msg. make sure your processing is `idempotent` (i.e. processing again the msg won't impact your systems)
+- `Exactly once`: can be achieved for kafka => kafka workflows using the Txn API (easy with Kafka streams API). For kafka => Sinck workflows, use a idempotent consumer
+
+<br>
+
+- `Bottom line`: for most applications you should use `at least once processing` (we'll see in practice how to do it and ensure your transformations/ processing are idempotent)
+
+
+<br><br><br>
+
+## 7.5 OpenSearch consumer implementation - idempotent
+
+1. create out own id
+
+2. use existing id
+    - ![imgs](./imgs/Xnip2023-10-07_12-37-30.jpg)
+
+
+<br><br><br>
+
+## 7.6 Consumer offset commit strategies
+
+<br><br><br>
+
+### 7.6.1 two strategies
+- there are two most common patterns for committing offsets in a consumer application
+- 2 strategies:
+    - (easy) enable.auto.commit=true & synchronous processing of batches
+    - (medium) enable.auto.commit=false & manual commit of offsets
+
+<br><br><br>
+
+### 7.6.2 Auto offset commit behaviour
+- in the java consumer API, offsets are regularly committed
+- enable at-least-once reading scenario by default(under conditions)
+- offsets are committed when you call .poll() and auto.commit.interval.ms has elapsed
+- e.g. auto.commit.interval.ms=5000 and enable.auto.commit=true will commit
+- *make sure msgs are all successfully processed before yu call poll() again*
+    - if u dont, u will not be in at-least-once reading scenario
+    - in that (rare) case, you must disable enable.auto.commit, and most likely most processing to a separate thread, and then from time-to-time cal .commitSync() or .commitAsync() with correct offsets manually(advanced)
+    - ![imgs](./imgs/Xnip2023-10-07_12-55-41.jpg)
+
+<br><br><br>
+
+### 7.6.3 Strategy 1
+
+- enable.auto.commit=true & synchronous processing of batches
+- with auto-commit, offsets will be committed automatically for you at regular interval (auto.commit.interval.ms=5000 by default) every-time you call .poll()
+- if you don't use synchronous processing, you will be in "at-most-once" behaviour because offsets will be committed before your data is processed
+    - ![imgs](./imgs/Xnip2023-10-07_12-55-10.jpg)
+
+
+<br><br><br>
+
+### 7.6.4 Strategy 2
+- enable.auto.commit=false & synchronous processing of batches
+- you control when you commit offsets and what's the condition for commiting them
+- Example: accumulating records into a buffer and then flushing the buffer to a database + committing offsets asynchronously then
+    - ![imgs](./imgs/Xnip2023-10-07_12-53-41.jpg)
+
+<br><br><br>
+
+### 7.6.5 strategies summary
+- enable.auto.commit=false & storing offsets externally
+
+- **This is advanced**:
+    - you need to assign partitions to your consumers at launch manually using .seek() API
+    - you need to model and store your offsets in a database table for example 
+    - you need to handle the cases where rebalances happen(ConsumerRebalanceListener interface) 
+
+- Example: if u need exactly once processing and can't find any way to do idempotent processing, then you "process data" + "commit offsets" as part of single txn
+
+- Note: I dont recommend using this strategy unless you exactly know what and why you're doing it
+
+
+<br><br><br>
+
+## 7.7 delivery semantics
+
+1. disable auto commit, `enable.auto.commit=false`
+2. although consumed all data from topic, but LAG stay the same 
+    - ![imgs](./imgs/Xnip2023-10-07_13-04-04.jpg)
+    - ![imgs](./imgs/Xnip2023-10-07_13-05-24.jpg)
+
+<br><br><br>
+
+3. if we stop and re-start consumer, it will re-committing all same data
+    - ![imgs](./imgs/Xnip2023-10-07_13-07-37.jpg)
+
+<br><br><br>
+
+4. add manual commit after we processed the data, LAG turns to `0` as well
+    - ![imgs](./imgs/Xnip2023-10-07_13-09-43.jpg)
+    - ![imgs](./imgs/Xnip2023-10-07_13-10-21.jpg)
+
+<br><br><br>
+
+5. this is `at-least-once` strategy, because we are commit only if we processed the data successfully
+    - ![imgs](./imgs/Xnip2023-10-07_13-12-04.jpg)
+    
+<br><br><br>
+
+## 7.7 Batching data
+1. create bulk request, as we submmitting each single request, that is not efficient
+2. operations
+```bash
+# reset wikimedia topic of consumer group
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group consumer-opensearch-demo --reset-offsets --to-earliest --topic wikimedia.recentchange --execute
+
+# check result
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group consumer-opensearch-demo
+
+# Rest succesfully
+```
+
+- ![imgs](./imgs/Xnip2023-10-07_13-18-44.jpg)
+
+
+3. test bulk efficiency, greatly improved
+    - ![imgs](./imgs/Xnip2023-10-07_13-21-46.jpg)
+    
+
+<br><br><br>
+
+## 7.8 Consumer offset reset behaviour
+
+<br><br><br>
+
+### 7.8.1 consumer offset reset behaviour
+- a consumer is expected to read from a log contiuously
+
+- but if your application has a bug, you consumer can be down
+- if Kafka has a `retention of 7 days`, and you consumer is down for more than 7 days, the offsets are "invalid"
+    - ![imgs](./imgs/Xnip2023-10-07_13-29-04.jpg)
+    
+
+<br><br><br>
+
+- The behaviour for the consumer is to then use:
+    - auto.offset.reset=latest: will read from the end of the log
+    - auto.offset.reset=earliest: will read from the start of the log
+    - auto.offset.reset=none: will throw exception if no offset is found
+
+- additionally, consumer offsets can be lost:
+    - if a consumer hasn't read new data in 1 day (Kafka < 2.0)
+    - if a consumer hasn't read new data in 7 day (Kafka >= 2.0)
+
+- This can be controlled by the broker settings `offset.retention.minutes`
+
+<br><br><br>
+
+### 7.8.2 Replaying data for consumers
+- To replay data for a consumer group
+    - take all the consumers from a specific group down
+    - use kafka-consumer-groups command to set offset to what you want
+    - restart consumers
+
+- **Bottom line**
+    - set proper data rentation period & offset retention period
+    - ensure the auto offset reset behaviour is the one you expect/ want
+    - use replay capability is case of unexpected behaviour
+
+
+<br><br><br>
+
+## 7.9 Replaying data
+```bash
+# shift offset by 400
+# https://www.bigdatainrealworld.com/how-to-change-or-reset-consumer-offset-in-kafka/
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group consumer-opensearch-demo --reset-offsets --shift-by 400 --topic wikimedia.recentchange --execute
+
+# check result
+$ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group consumer-opensearch-demo
+```
+- ![imgs](./imgs/Xnip2023-10-07_13-34-50.jpg)
+
+<br><br><br>
+
+## 7.10 Consumer internal threads
+
+<br><br><br>
+
+### 7.10.1 Controlling Consumer liveliness
+- consumers in a group talk to a consumer groups coordinator
+- to detect consumers that are "down", there is a "heartbeat" mechanism and a "poll" mechanism
+- **to avoid issues, consumers are encouraged to process data fast and poll often**
+    - ![imgs](./imgs/Xnip2023-10-07_18-26-29.jpg)
+    
+
+
+<br><br><br>
+
+### 7.10.2 Consumer hearbeat thread
+- heartbeat.interval.ms (default 3seconds):
+    - how often to send heartbeats
+    - usually set to 1/3rd of session.timeout.ms
+
+- session.timeout.ms (default 45 seconds kafka 3.0+, before 10 seconds):
+    - heartbeats are sent periodically to the broker
+    - if no heartbeat is  sent during that period, the consumer is considered dead
+    - se even lower to faster consumer rebalances
+
+- take-away: this mechanism is used to detect a consumer application being down
+
+<br><br><br>
+
+### 7.10.3 Consumer Poll Thread
+
+- max.poll interval.ms (default 5 minutes):
+    - maximum amount of time between two .poll() calls before declaring the consumer dead
+    - this is relevant for big data frameworks like Spark in case the processing takes time
+
+- **take-away: this mechanism is used to detect a data processing issue with the consumer (consumer is "stuck")**
+
+- max.poll.records (default 500):
+    - controls how many records to receive per poll request
+    - increase if your msgs are very small and have a lot of available RAM
+    - Good to monitor how many records are polled per request
+    - Lower if it takes you too much time to process records
+
+<br><br><br>
+
+### 7.10.4 Consumer Poll Behaviour
+- fetch.min.bytes=1 (default)
+    - controls how much data you want to pull at least on each request
+    - helps improving throughput and decresing request number
+    - at the cost of latency
+
+- fetch.max.wait.ms=500 (default)
+    - the maximum amount of time the Kafka broker will block before answering the fetch request if there isn't sufficient data to immediately satisfy the requirement given by fetch.min.bytes
+    - this means that until the requirement of fetch.min.bytes to be satisfidd, you will have up to 500ms of latency before the fetch returns data to the consumer (e.g. introducing a potential delay to be more efficient in requests)
+
+
+- max.partition.fetch.bytes=1MB (default)
+    - the maximum amount of data per partition the server will return
+    - if you read from 100 partitions, you'll need a lot of memory(RAM)
+- fetch.max.bytes=55MB (default)
+    - maximum data returned for each fetch request
+    - if you have available memory, try increasing fetch.max.bytes to allow the consumer to read more data in each request
+
+- advanced: change these settings only if your consumer maxes out on the throughput already
+
+
+<br><br><br>
+
+## 7.11. Consumer replica fetching - rack awareness
+
+<br><br><br>
+
+### 7.11.1 Default consumer behaviour with partition leaders
+- kafka consumers by default will read from the leader broker for a partition
+- possibly higher latency (mutiple data centre), + high network charges ($$$)
+- example: data centre === availability zone(AZ) in AWS, you pay for Cross AZ network charges
+    - ![imgs](./imgs/Xnip2023-10-07_18-36-28.jpg)
+
+<br><br><br>
+
+### 7.11.2 kafka consumers replica fetching (kafka v2.4+)
+
+- since Kafka 2.4, it is possible to configure consumers to read from **the closest replica**
+- this may help improve latency, and also decrease network costs if using the cloud
+    - ![imgs](./imgs/Xnip2023-10-07_18-35-57.jpg)
+
+<br><br><br>
+
+### 7.11.3 Consumer Rack awareness (v2.4+) - how to setup
+
+- Broker setting:
+    - must be version kafka v2.4+
+    - rack.id config must be set to the data centre ID (ex: AZ ID in AWS)
+    - example for AWS: AZ ID rack.id=usw2-az1
+
+    - `replica.selector.class` must be set to `org.apache.kafka.common.replica.RackAwareReplicaSelector`
+
+
+- Consumer setting:
+    - set `client.rack` to the data centre ID the consumer is launched on
